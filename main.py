@@ -4,7 +4,6 @@ import networkx as nx
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 import pandas as pd
-import json
 import numpy as np
 import logging
 logging.getLogger().setLevel(logging.INFO)
@@ -62,7 +61,9 @@ class netX():
         plt.axis("off")
         plt.show()
 
-links = [
+if __name__ == '__main__':
+    logging.getLogger().setLevel(logging.INFO)
+    links = [
     {"source": "Napoleon", "target": "Myriel", "value": 1},
     {"source": "Mlle.Baptistine", "target": "Myriel", "value": 8},
     {"source": "Mme.Magloire", "target": "Myriel", "value": 10},
@@ -319,8 +320,8 @@ links = [
     {"source": "Mme.Hucheloup", "target": "Enjolras", "value": 1}
 ]
 
-df = pd.DataFrame(links)
+    df = pd.DataFrame(links)
 
-graph=netX(df)
-graph.draw()
+    graph=netX(df)
+    graph.draw()
 # %%
