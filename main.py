@@ -37,7 +37,7 @@ class netX():
 
         # Drop duplicates and rename columns
         df= df_source.drop_duplicates()
-        df.rename(columns={source_column: "source", "target_column": "target","weight_column": "weight"})
+        df.rename(columns={source_column: "source", target_column: "target",weight_column: "weight"})
         
         # Create symmetric dataframe and drop duplicates
         df = pd.concat([df, pd.DataFrame(
