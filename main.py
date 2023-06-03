@@ -5,20 +5,34 @@ import logging
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 
 
 class netX():
     G:nx.Graph
-    def __init__(self,df_source: pd.DataFrame):
-        df = df_source.drop_duplicates()
+    def __init__(self,df_source: pd.DataFrame,
+                 source_column:str="source",
+                 target_column:str="target",
+                 weight_column:str="weight",
+                 max_nodes:int=50):
+        if source_column not in df_source.columns:
+            raise ValueError('missing source column')
+        if target_column not in df_source.columns:
+            raise ValueError('missing target column')
+        if weight_column not in df_source.columns:
+            raise ValueError('missing weight column')
+        elif not is_numeric_dtype(df_source[weight_column]):
+            raise ValueError('weight column is not numeric')
+        df= df_source.drop_duplicates()
+        df.rename(columns={source_column: "source", "target_column": "target","weight_column": "weight"})
         df = pd.concat([df, pd.DataFrame(
             {"source": df["target"], "target":df["source"], "weight":df["weight"]})], ignore_index=True).drop_duplicates()
-        df_node = df.groupby('source').agg({'value': 'sum'})
-        self.mean = df.agg({'value': 'mean'})
+        df_node = df.groupby('source').agg({'weight': 'sum'}).sort_values(by="weight").head(max_nodes)
+        self.mean = df.agg({'weight': 'mean'})
         nodes = [(index, {"size": row["weight"]})
                 for index, row in df_node.iterrows()]
         edges = [(row["source"], row["target"], int(row["weight"]))
-                for index, row in df.iterrows()]
+                for index, row in df.iterrows() if row["source"] in nodes and row["target"] in nodes]
         self.G = nx.Graph()
         logging.info(f'Adding {len(nodes)} nodes')
         self.G.add_nodes_from(nodes)
