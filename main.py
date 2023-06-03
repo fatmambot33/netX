@@ -1,11 +1,11 @@
 # %%
+import json
+import logging
+
 import matplotlib.pyplot as plt
 import networkx as nx
-from typing import Dict, List, Optional, Union
 import pandas as pd
-import logging
-import json
-logging.getLogger().setLevel(logging.INFO)
+
 
 class netX():
     G:nx.Graph
