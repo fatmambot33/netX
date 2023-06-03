@@ -10,20 +10,20 @@ import pandas as pd
 class netX():
     G:nx.Graph
     def __init__(self,df_source: pd.DataFrame):
-        f = df_source.drop_duplicates()
-        df = pd.concat([df_source, pd.DataFrame(
-            {"source": df_source["target"], "target":df_source["source"], "value":df_source["value"]})], ignore_index=True).drop_duplicates()
+        df = df_source.drop_duplicates()
+        df = pd.concat([df, pd.DataFrame(
+            {"source": df["target"], "target":df["source"], "weight":df["weight"]})], ignore_index=True).drop_duplicates()
         df_node = df.groupby('source').agg({'value': 'sum'})
         self.mean = df.agg({'value': 'mean'})
-        nodes = [(index, {"size": row["value"]})
+        nodes = [(index, {"size": row["weight"]})
                 for index, row in df_node.iterrows()]
-        links = [(row["source"], row["target"], int(row["value"]))
-                for index, row in df_source.iterrows()]
+        edges = [(row["source"], row["target"], int(row["weight"]))
+                for index, row in df.iterrows()]
         self.G = nx.Graph()
         logging.info(f'Adding {len(nodes)} nodes')
         self.G.add_nodes_from(nodes)
-        logging.info(f'Adding {len(links)} links')
-        self.G.add_weighted_edges_from(links)
+        logging.info(f'Adding {len(edges)} edges')
+        self.G.add_weighted_edges_from(edges)
     def node_size(self):
         return [
         v/self.mean * 10 for v in nx.get_node_attributes(self.G, "size").values()]
