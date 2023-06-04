@@ -10,6 +10,8 @@ from pandas.api.types import is_numeric_dtype
 from itertools import groupby
 from operator import itemgetter
 import numpy as np
+NODE_SIZE=5
+EDGE_WIDTH=3
 class netX():
     """
     Class for representing and manipulating network data.
@@ -67,21 +69,25 @@ class netX():
         betweenness = nx.edge_betweenness_centrality(self.G, normalized=False)
         nx.set_edge_attributes(self.G, betweenness, "betweenness")
 
-    def node_size(self,node_scale:int=10):
+    def get_node_attributes(self,attribute_name:str):
+        return nx.get_node_attributes(self.G, attribute_name).values()
+    def get_edge_attributes(self,attribute_name:str):
+        return nx.get_edge_attributes(self.G, attribute_name).values()
+    def node_size(self,node_scale:int=NODE_SIZE):
         """
         Calculate and return node sizes based on weight.
         """
         return [
-        percentile * node_scale for percentile in nx.get_node_attributes(self.G, "percentile").values()]
+        percentile * node_scale for percentile in self.get_node_attributes("percentile")]
 
-    def edge_width(self,edge_scale:float=2.0):
+    def edge_width(self,edge_scale:float=EDGE_WIDTH):
         """
         Calculate and return node sizes based on weight.
         """
         return [
-        percentile * edge_scale for percentile in nx.get_edge_attributes(self.G, "percentile").values()]
+        percentile * edge_scale for percentile in self.get_edge_attributes("percentile")]
 
-    def draw(self,scale:int=2,node_scale:int=10,edge_scale:float=2.0):
+    def draw(self,scale:int=2,node_scale:int=NODE_SIZE,edge_scale:float=EDGE_WIDTH):
         """
         Draw the graph using matplotlib.
         """
