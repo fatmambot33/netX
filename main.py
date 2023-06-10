@@ -19,10 +19,10 @@ from pandas.api.types import is_numeric_dtype
 from collections import Counter, defaultdict
 
 
-DEFAULT = {"MAX_EDGES": 400,
-           "MAX_NODES": 100,
+DEFAULT = {"MAX_EDGES": 100,
+           "MAX_NODES": 50,
            "MAX_NODE_SIZE": 600,
-           "MAX_EDGE_WIDTH": 1,
+           "MAX_EDGE_WIDTH": 10,
            "GRAPH_SCALE": 2
            }
 
