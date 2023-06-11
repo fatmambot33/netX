@@ -1,22 +1,20 @@
-from typing import Dict, List, Tuple
-from typing import List
-from collections import Counter
-from typing import Optional, Dict
-# Hint for Visual Code Python Interactive window
-# %%
-
+from collections.abc import Iterable
 import logging
 import types
-from typing import Callable, List, Optional
-
+from collections import Counter, defaultdict
+from typing import Callable, Dict, List, Optional, Tuple, Any
+from heapq import nlargest
 import matplotlib.pyplot as plt
 import networkx as nx
-from networkx import Graph
+from networkx.classes.graph import Graph
 import numpy as np
 import pandas as pd
+from networkx import Graph
 from networkx.algorithms import approximation
 from pandas.api.types import is_numeric_dtype
-from collections import Counter, defaultdict
+
+# Hint for Visual Code Python Interactive window
+# %%
 
 
 DEFAULT = {"MAX_EDGES": 100,
@@ -44,6 +42,23 @@ class NodeView(nx.classes.reportviews.NodeView):
         return filtered_nodes
 
 
+class AdjacencyView(nx.classes.coreviews.AdjacencyView):
+    def sort(self,
+             attribute: Optional[str] = 'weight',
+             reverse: Optional[bool] = True):
+        # Sort the nodes based on the specified attribute
+        sorted_nodes = sorted(self,
+                              key=lambda node: self[node][attribute],
+                              reverse=reverse)
+        return sorted_nodes
+
+    def filter(self, attribute: str, value: str):
+        # Filter the nodes based on the specified attribute and value
+        filtered_nodes = [
+            node for node in self if attribute in self[node] and self[node][attribute] == value]
+        return filtered_nodes
+
+
 class EdgeView(nx.classes.reportviews.EdgeView):
     def sort(self,
              reverse: Optional[bool] = True,
@@ -51,7 +66,7 @@ class EdgeView(nx.classes.reportviews.EdgeView):
         sorted_edges = sorted(self(data=True),
                               key=lambda t: t[2].get(attribute, 1),
                               reverse=reverse)
-        return {(u, v):_ for u, v, _ in sorted_edges}
+        return {(u, v): _ for u, v, _ in sorted_edges}
 
     def filter(self, attribute: str, value: str):
         # Filter the edges based on the specified attribute and value
@@ -68,6 +83,7 @@ class Graph(nx.Graph):
     def __init__(self):
         super().__init__()
         self._scale = 1.0
+
     @property
     def scale(self) -> float:
         return self._scale
@@ -84,8 +100,12 @@ class Graph(nx.Graph):
     def edges(self):
         return EdgeView(self)
 
-    def layout(self, max_node_size: int = 300, max_edge_width: int = 10, max_font_size: int = 18):
+    @property
+    def adjacency(self):
+        return AdjacencyView(list(self))
 
+
+    def layout(self, max_node_size: int = DEFAULT["MAX_NODES"], max_edge_width: int = DEFAULT["MAX_EDGE_WIDTH"], max_font_size: int = 14):
         """
         Calculates the sizes for nodes, edges, and fonts based on node weights and edge weights.
 
@@ -97,24 +117,11 @@ class Graph(nx.Graph):
         Returns:
         - Tuple[List[int], List[int], Dict[int, List[str]]]: A tuple containing the node sizes, edge widths,
           and font sizes for node labels.
-
-        Raises:
-        - ValueError: If the maximum values for node size, edge width, or font size are non-positive.
         """
 
-        if max_node_size <= 0 or max_edge_width <= 0 or max_font_size <= 0:
-            raise ValueError("Maximum values must be positive.")
-        self.nodes_agg()
-        # Normalize node weights between 0 and 1
-        node_weights = [data.get('weight', 0)
-                        for _, data in self.nodes(data=True)]
-        min_node_weight = min(node_weights)
-        max_node_weight = max(node_weights)
-        if max_node_weight - min_node_weight == 0:
-            normalized_weights = [0 for weight in node_weights]
-        else:
-            normalized_weights = [
-                (weight - min_node_weight) / (max_node_weight - min_node_weight) for weight in node_weights]
+        node_weights = [data.get('weight_normalized', 1)
+                        for node, data in self.nodes(data=True)]
+        node_size = [weight*max_node_size for weight in node_weights]
 
         # Normalize edge weights between 0 and 1
         edge_weights = [data.get('weight', 0)
@@ -132,63 +139,22 @@ class Graph(nx.Graph):
             width * max_edge_width for width in normalized_edge_weights]
 
         # Scale the normalized node weights within the desired range of font sizes
-        node_size_dict = dict(zip(self.nodes, normalized_weights))
+        node_size_dict = dict(zip(self.nodes, node_weights))
         fonts_size = defaultdict(list)
         for node, width in node_size_dict.items():
             fonts_size[int(width * max_font_size) + 6].append(node)
         fonts_size = dict(fonts_size)
 
-        return node_size_dict, edges_width, fonts_size
+        return node_size, edges_width, fonts_size
 
-    def nodes_agg(self, attribute: Optional[str] = 'weight', operation: str = 'sum', normalized: bool = True) -> Dict[str, float]:
-        """
-        Calculates aggregate values for node attributes based on the edges in the graph.
-
-        Parameters:
-        - attribute (str): The attribute name to consider for aggregation (default: 'weight').
-        - operation (str): The type of aggregation operation to perform. Valid operations: 'sum', 'min', 'max' (default: 'sum').
-        - normalized (bool): Flag indicating whether to normalize the aggregate values between 0 and 1 (default: True).
-
-        Returns:
-        - Dict[str, float]: A dictionary containing the aggregate values for each node.
-
-        Raises:
-        - ValueError: If the specified attribute is not present in the graph edges.
-        - ValueError: If an invalid operation is provided.
-        """
-        for node1, node2, data in self.edges(data=True):
-            
-            if attribute not in data:
-                raise ValueError(f"Attribute '{attribute}' is not present in the graph edges.")
-            else:
-                break
-
-        if operation == 'sum':
-            aggregate_func = sum
-        elif operation == 'min':
-            aggregate_func = min
-        elif operation == 'max':
-            aggregate_func = max
-        else:
-            raise ValueError(f"Invalid operation: '{operation}'.")
-
-        node_aggregates = {
-            node: aggregate_func(data.get(attribute, 0) for _, _, data in self.edges(data=True) if node in (_, _)) for node in self.nodes}
-
-        if normalized:
-            min_val = min(node_aggregates.values())
-            max_val = max(node_aggregates.values())
-            node_aggregates = {
-                node: (val - min_val) / (max_val - min_val) for node, val in node_aggregates.items()}
-
-        nx.set_node_attributes(self, node_aggregates, attribute)
-
-        return node_aggregates
-
-    def subgraphX(self, node_list, max_edges):
-        edges = list(nx.induced_subgraph(
-            self, nbunch=node_list).edges.sort())[:max_edges]
-        return nx.edge_subgraph(self, edges=edges)
+    def subgraphX(self, node_list=None, max_edges: int = DEFAULT["MAX_EDGES"]):
+        if node_list is None:
+            node_list = self.nodes.sort("weight")[:DEFAULT["MAX_NODES"]]
+        subgraph = nx.subgraph(
+            self, nbunch=node_list)
+        edges = subgraph.top_k_edges(attribute="weight", k=5).keys()
+        subgraph = subgraph.edge_subgraph(list(edges)[:max_edges])
+        return subgraph
 
     def plotX(self):
         """
@@ -202,14 +168,15 @@ class Graph(nx.Graph):
         axgrid = fig.add_gridspec(5, 4)
 
         ax0 = fig.add_subplot(axgrid[0:3, :])
-        node_sizes, edge_widths, font_sizes = self.layout(300, 10, 18)
+        node_sizes, edge_widths, font_sizes = self.layout(
+            DEFAULT["MAX_NODE_SIZE"], DEFAULT["MAX_EDGE_WIDTH"], 14)
         pos = nx.spring_layout(self, seed=10396953)
         # nodes
         nx.draw_networkx_nodes(self,
                                pos,
                                ax=ax0,
-                               node_size=list(node_sizes.values()),
-                               #node_color=list(node_sizes.values()),
+                               node_size=list(node_sizes),
+                               # node_color=list(node_sizes.values()),
                                cmap=plt.cm.Blues)
         # edges
         nx.draw_networkx_edges(self,
@@ -246,20 +213,20 @@ class Graph(nx.Graph):
         plt.show()
 
     def analysis(self, node_list: Optional[List] = None,
-             scale: int = DEFAULT["GRAPH_SCALE"],
-             node_scale: int = DEFAULT["MAX_NODE_SIZE"],
-             edge_scale: float = DEFAULT["MAX_EDGE_WIDTH"],
-             max_nodes: int = DEFAULT["MAX_NODES"],
-             max_edges: int = DEFAULT["MAX_EDGES"],
-             plt_title: Optional[str] = "Top keywords"):
-        node_list=self.nodes_circuits(node_list)
+                 scale: int = DEFAULT["GRAPH_SCALE"],
+                 node_scale: int = DEFAULT["MAX_NODE_SIZE"],
+                 edge_scale: float = DEFAULT["MAX_EDGE_WIDTH"],
+                 max_nodes: int = DEFAULT["MAX_NODES"],
+                 max_edges: int = DEFAULT["MAX_EDGES"],
+                 plt_title: Optional[str] = "Top keywords"):
+        # node_list=self.nodes_circuits(node_list)
         g = self.subgraphX(max_edges=max_edges, node_list=node_list)
         connected_components = nx.connected_components(g)
         for connected_component in connected_components:
             connected_component_graph = self.subgraphX(max_edges=max_edges,
-                                                         node_list=connected_component)
+                                                       node_list=connected_component)
             connected_component_graph.plotX()
-    
+
     def nodes_circuits(self, node_list: List[str] = [], iterations: int = 0) -> List[str]:
         """
         Finds nodes with more than one edge in a graph, by iteratively removing nodes with a single edge.
@@ -286,59 +253,66 @@ class Graph(nx.Graph):
 
         return Graph.nodes_circuits(self, [], iterations)
 
+    def edge_subgraph(self, edges: Iterable) -> Graph:
+        return nx.edge_subgraph(self, edges)
+
+    def top_k_edges(self, attribute: str, reverse: bool = True, k: int = 5) -> Dict[Any, List[Tuple[Any, Dict]]]:
+        """
+        Returns the top k edges per node based on the given attribute.
+
+        Parameters:
+        attribute (str): The attribute name to be used for sorting.
+        reverse (bool): Flag indicating whether to sort in reverse order (default: True).
+        k (int): Number of top edges to return per node.
+
+        Returns:
+        Dict[Any, List[Tuple[Any, Dict]]]: A dictionary where the key is a node
+        and the value is a list of top k edges for that node. Each edge is represented
+        as a tuple where the first element is the adjacent node and the second element
+        is a dictionary of edge attributes.
+        """
+        top_list = {}
+        for node in self.nodes:
+            edges = self.edges(node, data=True)
+            edges_sorted = sorted(edges, key=lambda x: x[2].get(attribute, 0), reverse=reverse)
+            top_k_edges = edges_sorted[:k]
+            for u, v, data in top_k_edges:
+                edge_key = (u, v)
+                top_list[edge_key] = data[attribute]
+        return top_list
+
     @staticmethod
-    def from_df( df_source: pd.DataFrame,
-                 source_column: str = "source",
-                 target_column: str = "target",
-                 weight_column: str = "weight"):
+    def from_pandas_edgelist(df,
+                             source: Optional[str] = "source",
+                             target: Optional[str] = "target",
+                             weight: Optional[str] = "weight"):
         """
         Initialize netX instance with a simple dataframe
 
         :param df_source: DataFrame containing network data.
-        :param source_column: Name of source nodes column in df_source.
-        :param target_column: Name of target nodes column in df_source.
-        :param weight_column: Name of edges weight column in df_source.
+        :param source: Name of source nodes column in df_source.
+        :param target: Name of target nodes column in df_source.
+        :param weight: Name of edges weight column in df_source.
 
         """
-
-        # Input validation
-        if source_column not in df_source.columns:
-            raise ValueError('missing source column')
-        if target_column not in df_source.columns:
-            raise ValueError('missing target column')
-        if weight_column not in df_source.columns:
-            raise ValueError('missing weight column')
-        elif not is_numeric_dtype(df_source[weight_column]):
-            raise ValueError('weight column is not numeric')
-
-        # Preprocessing
-        df = df_source.drop_duplicates()
-        df.rename(columns={source_column: "source",
-                  "target_column": "target", "weight_column": "weight"})
-        df_node = pd.concat([df.groupby('source').agg(
-            {'weight': 'sum'}), df.groupby('target').agg({'weight': 'sum'})])
-        df_node = df_node.groupby(df_node.index).agg(
-            {'weight': 'sum'}).sort_values(by="weight", ascending=False)
-        df_node['name'] = df_node.index
-
-        # Graph initialization
         G = Graph()
-        logging.info(f'Adding {len(df_node)} nodes')
-        G.add_nodes_from([(index, {"weight": row["weight"]})
-                               for index, row in df_node.iterrows()])
-        df = df[df['source'].isin(df_node['name']) &
-                df['target'].isin(df_node['name'])]
-        logging.info(f'Adding {len(df)} edges')
-        edges = [(row["source"], row["target"],
-                  {"weight": int(row["weight"])}) for index, row in df.iterrows()]
-        G.add_edges_from(edges, weight="weight")
+        G = nx.from_pandas_edgelist(
+            df, source=source, target=target, edge_attr=weight, create_using=G)
+        G.nodes_circuits()
 
-        # Graph metrics processing
-        # Node
-        nx.set_node_attributes(G, dict(G.degree), "degree")
-        # Edge
-        betweenness = nx.edge_betweenness_centrality(G, normalized=False)
-        nx.set_edge_attributes(G, betweenness, "betweenness")
+        edge_aggregates = G.top_k_edges(attribute=weight, k=10)
+        node_aggregates = {}
+        for (u, v), weight_value in edge_aggregates.items():
+            if u not in node_aggregates:
+                node_aggregates[u] = 0
+            if v not in node_aggregates:
+                node_aggregates[v] = 0
+            node_aggregates[u] += weight_value
+            node_aggregates[v] += weight_value
+
+        nx.set_node_attributes(G, node_aggregates, name=weight)
+
+        G = G.edge_subgraph(edges=G.top_k_edges(attribute=weight))
         return G
 
 
@@ -346,7 +320,8 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
 
     df = pd.read_csv('data.csv')
-    graph = Graph.from_df(df)
+    graph = Graph.from_pandas_edgelist(df)
+    graph = graph.subgraphX()
     graph.analysis()
 
 
