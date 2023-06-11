@@ -104,6 +104,8 @@ class Graph(nx.Graph):
     def adjacency(self):
         return AdjacencyView(list(self))
 
+    def edge_subgraph(self, edges: Iterable) -> Graph:
+        return nx.edge_subgraph(self, edges)
 
     def layout(self, max_node_size: int = DEFAULT["MAX_NODES"], max_edge_width: int = DEFAULT["MAX_EDGE_WIDTH"], max_font_size: int = 14):
         """
@@ -223,9 +225,10 @@ class Graph(nx.Graph):
         g = self.subgraphX(max_edges=max_edges, node_list=node_list)
         connected_components = nx.connected_components(g)
         for connected_component in connected_components:
-            connected_component_graph = self.subgraphX(max_edges=max_edges,
-                                                       node_list=connected_component)
-            connected_component_graph.plotX()
+            if len(connected_component)>5:
+                connected_component_graph = self.subgraphX(max_edges=max_edges,
+                                                        node_list=connected_component)
+                connected_component_graph.plotX()
 
     def nodes_circuits(self, node_list: List[str] = [], iterations: int = 0) -> List[str]:
         """
@@ -253,8 +256,6 @@ class Graph(nx.Graph):
 
         return Graph.nodes_circuits(self, [], iterations)
 
-    def edge_subgraph(self, edges: Iterable) -> Graph:
-        return nx.edge_subgraph(self, edges)
 
     def top_k_edges(self, attribute: str, reverse: bool = True, k: int = 5) -> Dict[Any, List[Tuple[Any, Dict]]]:
         """
