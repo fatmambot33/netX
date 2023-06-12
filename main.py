@@ -10,19 +10,30 @@ from networkx.classes.graph import Graph
 import numpy as np
 import pandas as pd
 from networkx import Graph
-from networkx.algorithms import approximation
 from pandas.api.types import is_numeric_dtype
 
 # Hint for Visual Code Python Interactive window
 # %%
 
-
 DEFAULT = {"MAX_EDGES": 100,
            "MAX_NODES": 50,
-           "MAX_NODE_SIZE": 600,
+           "MIN_NODE_SIZE": 100,
+           "MAX_NODE_SIZE": 1000,
            "MAX_EDGE_WIDTH": 10,
-           "GRAPH_SCALE": 2
+           "GRAPH_SCALE": 2,
+           "MAX_FONT_SIZE": 12,
+           "MIN_FONT_SIZE": 8
            }
+
+
+def softmax(x):
+    return (np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum())
+
+
+def compute_weights(weights, scale_max=1, scale_min=0):
+    quintiles = np.percentile(weights, [20, 40, 60, 80])
+    outs = np.searchsorted(quintiles, weights)
+    return [out * (scale_max-scale_min)/len(quintiles)+scale_min for out in outs]
 
 
 class NodeView(nx.classes.reportviews.NodeView):
@@ -107,7 +118,12 @@ class Graph(nx.Graph):
     def edge_subgraph(self, edges: Iterable) -> Graph:
         return nx.edge_subgraph(self, edges)
 
-    def layout(self, max_node_size: int = DEFAULT["MAX_NODES"], max_edge_width: int = DEFAULT["MAX_EDGE_WIDTH"], max_font_size: int = 14):
+    def layout(self,
+               max_node_size: int = DEFAULT["MAX_NODES"],
+               min_node_size: int = DEFAULT["MAX_NODES"],
+               max_edge_width: int = DEFAULT["MAX_EDGE_WIDTH"],
+               max_font_size: int = DEFAULT["MAX_FONT_SIZE"],
+               min_font_size: int = DEFAULT["MIN_FONT_SIZE"]):
         """
         Calculates the sizes for nodes, edges, and fonts based on node weights and edge weights.
 
@@ -120,31 +136,24 @@ class Graph(nx.Graph):
         - Tuple[List[int], List[int], Dict[int, List[str]]]: A tuple containing the node sizes, edge widths,
           and font sizes for node labels.
         """
-
-        node_weights = [data.get('weight_normalized', 1)
+        # Normalize and scale nodes' weights within the desired range of edge widths
+        node_weights = [data.get('weight', 1)
                         for node, data in self.nodes(data=True)]
-        node_size = [weight*max_node_size for weight in node_weights]
+        node_size = compute_weights(
+            weights=node_weights, scale_max=max_node_size,scale_min=min_node_size)
 
-        # Normalize edge weights between 0 and 1
+        # Normalize and scale edges' weights within the desired range of edge widths
         edge_weights = [data.get('weight', 0)
                         for _, _, data in self.edges(data=True)]
-        min_edge_weight = min(edge_weights)
-        max_edge_weight = max(edge_weights)
-        if max_edge_weight - min_edge_weight == 0:
-            normalized_edge_weights = [0 for weight in edge_weights]
-        else:
-            normalized_edge_weights = [
-                (weight - min_edge_weight) / (max_edge_weight - min_edge_weight) for weight in edge_weights]
-
-        # Scale the normalized edge weights within the desired range of edge widths
-        edges_width = [
-            width * max_edge_width for width in normalized_edge_weights]
+        edges_width = compute_weights(
+            weights=edge_weights, scale_max=max_edge_width)
 
         # Scale the normalized node weights within the desired range of font sizes
-        node_size_dict = dict(zip(self.nodes, node_weights))
+        node_size_dict = dict(zip(self.nodes, compute_weights(
+            weights=node_weights, scale_max=max_font_size, scale_min=min_font_size)))
         fonts_size = defaultdict(list)
         for node, width in node_size_dict.items():
-            fonts_size[int(width * max_font_size) + 6].append(node)
+            fonts_size[int(width)].append(node)
         fonts_size = dict(fonts_size)
 
         return node_size, edges_width, fonts_size
@@ -172,7 +181,7 @@ class Graph(nx.Graph):
         ax0 = fig.add_subplot(axgrid[0:3, :])
         node_sizes, edge_widths, font_sizes = self.layout(
             DEFAULT["MAX_NODE_SIZE"], DEFAULT["MAX_EDGE_WIDTH"], 14)
-        pos = nx.spring_layout(self, seed=10396953)
+        pos = nx.spring_layout(self, k=1)
         # nodes
         nx.draw_networkx_nodes(self,
                                pos,
@@ -225,9 +234,9 @@ class Graph(nx.Graph):
         g = self.subgraphX(max_edges=max_edges, node_list=node_list)
         connected_components = nx.connected_components(g)
         for connected_component in connected_components:
-            if len(connected_component)>5:
+            if len(connected_component) > 5:
                 connected_component_graph = self.subgraphX(max_edges=max_edges,
-                                                        node_list=connected_component)
+                                                           node_list=connected_component)
                 connected_component_graph.plotX()
 
     def nodes_circuits(self, node_list: List[str] = [], iterations: int = 0) -> List[str]:
@@ -256,7 +265,6 @@ class Graph(nx.Graph):
 
         return Graph.nodes_circuits(self, [], iterations)
 
-
     def top_k_edges(self, attribute: str, reverse: bool = True, k: int = 5) -> Dict[Any, List[Tuple[Any, Dict]]]:
         """
         Returns the top k edges per node based on the given attribute.
@@ -275,7 +283,8 @@ class Graph(nx.Graph):
         top_list = {}
         for node in self.nodes:
             edges = self.edges(node, data=True)
-            edges_sorted = sorted(edges, key=lambda x: x[2].get(attribute, 0), reverse=reverse)
+            edges_sorted = sorted(edges, key=lambda x: x[2].get(
+                attribute, 0), reverse=reverse)
             top_k_edges = edges_sorted[:k]
             for u, v, data in top_k_edges:
                 edge_key = (u, v)
