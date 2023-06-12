@@ -1,3 +1,5 @@
+# Hint for Visual Code Python Interactive window
+# %%
 from collections.abc import Iterable
 import logging
 import types
@@ -12,13 +14,12 @@ import pandas as pd
 from networkx import Graph
 from pandas.api.types import is_numeric_dtype
 
-# Hint for Visual Code Python Interactive window
-# %%
+
 
 DEFAULT = {"MAX_EDGES": 100,
-           "MAX_NODES": 50,
+           "MAX_NODES": 30,
            "MIN_NODE_SIZE": 100,
-           "MAX_NODE_SIZE": 1000,
+           "MAX_NODE_SIZE": 2000,
            "MAX_EDGE_WIDTH": 10,
            "GRAPH_SCALE": 2,
            "MAX_FONT_SIZE": 12,
