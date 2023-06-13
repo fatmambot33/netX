@@ -15,7 +15,6 @@ from networkx import Graph
 from pandas.api.types import is_numeric_dtype
 
 
-
 DEFAULT = {"MAX_EDGES": 100,
            "MAX_NODES": 30,
            "MIN_NODE_SIZE": 100,
@@ -31,10 +30,10 @@ def softmax(x):
     return (np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum())
 
 
-def compute_weights(weights, scale_max=1, scale_min=0):
-    quintiles = np.percentile(weights, [20, 40, 60, 80])
-    outs = np.searchsorted(quintiles, weights)
-    return [out * (scale_max-scale_min)/len(quintiles)+scale_min for out in outs]
+def scale_weights(weights, scale_min=0,scale_max=1):
+    deciles = np.percentile(weights, [10, 20, 30, 40, 50, 60, 70, 80, 90])
+    outs = np.searchsorted(deciles, weights)
+    return [out * (scale_max-scale_min)/len(deciles)+scale_min for out in outs]
 
 
 class NodeView(nx.classes.reportviews.NodeView):
@@ -108,6 +107,10 @@ class Graph(nx.Graph):
     def nodes(self):
         return NodeView(self)
 
+    @nodes.setter
+    def scale(self, value: NodeView):
+        self.nodes = value
+
     @property
     def edges(self):
         return EdgeView(self)
@@ -140,17 +143,17 @@ class Graph(nx.Graph):
         # Normalize and scale nodes' weights within the desired range of edge widths
         node_weights = [data.get('weight', 1)
                         for node, data in self.nodes(data=True)]
-        node_size = compute_weights(
-            weights=node_weights, scale_max=max_node_size,scale_min=min_node_size)
+        node_size = scale_weights(
+            weights=node_weights, scale_max=max_node_size, scale_min=min_node_size)
 
         # Normalize and scale edges' weights within the desired range of edge widths
         edge_weights = [data.get('weight', 0)
                         for _, _, data in self.edges(data=True)]
-        edges_width = compute_weights(
+        edges_width = scale_weights(
             weights=edge_weights, scale_max=max_edge_width)
 
         # Scale the normalized node weights within the desired range of font sizes
-        node_size_dict = dict(zip(self.nodes, compute_weights(
+        node_size_dict = dict(zip(self.nodes, scale_weights(
             weights=node_weights, scale_max=max_font_size, scale_min=min_font_size)))
         fonts_size = defaultdict(list)
         for node, width in node_size_dict.items():
@@ -162,6 +165,9 @@ class Graph(nx.Graph):
     def subgraphX(self, node_list=None, max_edges: int = DEFAULT["MAX_EDGES"]):
         if node_list is None:
             node_list = self.nodes.sort("weight")[:DEFAULT["MAX_NODES"]]
+        connected_subgraph_nodes=list(self.find_connected_subgraph())
+        node_list = [node for node in node_list if node in connected_subgraph_nodes]
+
         subgraph = nx.subgraph(
             self, nbunch=node_list)
         edges = subgraph.top_k_edges(attribute="weight", k=5).keys()
@@ -240,32 +246,26 @@ class Graph(nx.Graph):
                                                            node_list=connected_component)
                 connected_component_graph.plotX()
 
-    def nodes_circuits(self, node_list: List[str] = [], iterations: int = 0) -> List[str]:
-        """
-        Finds nodes with more than one edge in a graph, by iteratively removing nodes with a single edge.
+    def find_connected_subgraph(self):
+        logging.info(f'find_connected_subgraph')
+        # Copy the original graph to avoid modifying it
+        H = self.copy()
 
-        Parameters:
-        - nx_graph (Graph): The graph to search for nodes.
-        - node_list (List[str]): The list of nodes to start the search (default: empty list).
-        - iterations (int): The number of iterations performed (default: 0).
+        # Flag to keep track of whether any node with degree < 2 was removed
+        removed_node = True
 
-        Returns:
-        - List[str]: The list of nodes with more than one edge.
-        """
-        if not node_list:
-            node_list = list(self)
+        while removed_node:
+            removed_node = False
+            # Iterate over the nodes
+            for node in list(H.nodes):
+                if H.degree(node) < 2:
+                    # Remove the node and its incident edges
+                    logging.info(f'Removing the {node} node and its incident edges')
+                    H.remove_node(node)
+                    removed_node = True
+                    break
 
-        single_edge_nodes = [
-            node for node in node_list if self.degree(node) <= 1]
-
-        if not single_edge_nodes:
-            return node_list
-
-        self.remove_nodes_from(single_edge_nodes)
-        iterations += 1
-
-        return Graph.nodes_circuits(self, [], iterations)
-
+        return H
     def top_k_edges(self, attribute: str, reverse: bool = True, k: int = 5) -> Dict[Any, List[Tuple[Any, Dict]]]:
         """
         Returns the top k edges per node based on the given attribute.
@@ -309,7 +309,7 @@ class Graph(nx.Graph):
         G = Graph()
         G = nx.from_pandas_edgelist(
             df, source=source, target=target, edge_attr=weight, create_using=G)
-        G.nodes_circuits()
+        G=G.find_connected_subgraph()
 
         edge_aggregates = G.top_k_edges(attribute=weight, k=10)
         node_aggregates = {}
